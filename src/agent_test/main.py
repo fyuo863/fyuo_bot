@@ -1,7 +1,12 @@
-from core.chat import AgentChat, TextChunk, ToolCall
+from core.chat import AgentChat, TextChunk, ToolCall, ReasoningChunk
 from tools.base import GetWeatherTool, GetLocationTool
 from core.usage import Usage
 import json
+
+BOLD = "\033[1m"
+DIM = "\033[2m"
+GREEN = "\033[32m"
+RESET = "\033[0m"
 
 def main():
     # 1. 准备工具 (去掉了 GetEndTool，因为不需要)
@@ -24,17 +29,26 @@ def main():
     # 3. 开启标准的 ReAct 核心执行循环
     while True:
         stream_items = []
-        print("AI:    ", end="", flush=True)
+        print("AI:--", end="", flush=True)
 
         # 【核心修改】直接把整个 messages 列表传给模型，而不是传拼接的字符串
+        reasoning_printed = False
         for item in AgentChat.chat(messages=messages, tools=tools):
             stream_items.append(item)
-            
-            if isinstance(item, TextChunk):
+
+            if isinstance(item, ReasoningChunk):
+                if not reasoning_printed:
+                    print(f"\n{DIM}[思考过程]", end="", flush=True)
+                    reasoning_printed = True
+                print(item.content, end="", flush=True)
+            elif isinstance(item, TextChunk):
+                if reasoning_printed:
+                    print(f"{RESET}\nAI:    {BOLD}", end="", flush=True)
+                    reasoning_printed = False
                 print(item.content, end="", flush=True)
             elif isinstance(item, ToolCall):
-                print(f"\n[思考中...准备调用工具] {item.name}")
-        print() # 换行
+                print(f"\n{GREEN}[调用工具] {item.name}{RESET}")
+        print(RESET)  # 换行并重置样式
 
         # 4. 本地拼装本次对话产生的碎片，并将其作为记忆追加到 messages 中
         assistant_msg = Usage.assemble_assistant_message(stream_items)

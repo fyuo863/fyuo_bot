@@ -93,3 +93,28 @@ class GetEndTool(BaseTool):
     def execute(self: str = "", **kwargs) -> str:
         # 这里接入真实天气 API
         return f"回答完毕"
+
+class ReadFileTool(BaseTool):
+    name = "read_file"
+    description = "读取指定路径的文件内容"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "file_path": {
+                "type": "string",
+                "description": "文件的完整路径，例如 'workspace/data.txt'"
+            }
+        },
+        "required": ["file_path"]
+    }
+
+    def execute(self, file_path: str, **kwargs) -> str:
+        # 安全检查：限制只能读取特定目录，防止越权读取系统文件
+        if not file_path.startswith("workspace/"):
+            return "错误：禁止访问该路径的文件。"
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            return f"读取文件失败: {str(e)}"
