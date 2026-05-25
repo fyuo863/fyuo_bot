@@ -13,6 +13,7 @@
   3. 实现 execute 方法
 """
 from abc import ABC, abstractmethod
+import requests
 
 
 class BaseTool(ABC):
@@ -64,35 +65,25 @@ class GetWeatherTool(BaseTool):
 
 class GetLocationTool(BaseTool):
     name = "get_location"
-    description = "获取当前的位置"
+    description = "获取用户当前所在的城市名称"
     parameters = {
         "type": "object",
         "properties": {
-            "location": {
-                "type": "string",
-                "description": "",
-            }
+            "query": {"type": "string", "description": "固定传 'self'"}
         },
-        "required": ["location"],
+        "required": []
     }
 
-    def execute(self: str = "", **kwargs) -> str:
-        # 这里接入真实天气 API
-        return f"当前位置为杭州"
-
-class GetEndTool(BaseTool):
-    name = "get_end"
-    description = "达成所有目标后调用,用于结束对话"
-    parameters = {
-        "type": "object",
-        "properties": {
-        },
-        "required": ["end"],
-    }
-
-    def execute(self: str = "", **kwargs) -> str:
-        # 这里接入真实天气 API
-        return f"回答完毕"
+    def execute(self, **kwargs) -> str:
+        try:
+            # 调用免费 IP 定位服务
+            response = requests.get("http://ip-api.com/json/", timeout=5)
+            data = response.json()
+            if data['status'] == 'success':
+                return data['city'] # 返回 "Hangzhou" 等
+            return "未知城市"
+        except Exception as e:
+            return f"定位失败: {str(e)}"
 
 class ReadFileTool(BaseTool):
     name = "read_file"
