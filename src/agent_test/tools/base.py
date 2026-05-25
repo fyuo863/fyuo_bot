@@ -79,3 +79,17 @@ class GetLocationTool(BaseTool):
     def execute(self: str = "", **kwargs) -> str:
         # 这里接入真实天气 API
         return f"当前位置为杭州"
+
+class GetEndTool(BaseTool):
+    name = "get_end"
+    description = "达成所有目标后调用,用于结束对话"
+    parameters = {
+        "type": "object",
+        "properties": {
+        },
+        "required": ["end"],
+    }
+
+    def execute(self: str = "", **kwargs) -> str:
+        # 这里接入真实天气 API
+        return f"回答完毕"
