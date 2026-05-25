@@ -14,6 +14,10 @@ class ToolCall:
     name: str
     arguments: str  # JSON 字符串
 
+@dataclass
+class ReasoningChunk:
+    """深度思考模型的推理过程片段"""
+    content: str
 
 class AgentChat:
     def __init__(self, agent):
@@ -22,6 +26,8 @@ class AgentChat:
     def send_message(self, message):
         response = self.agent.process_message(message)
         return response
+
+
 
     @staticmethod
     def chat(
@@ -58,6 +64,11 @@ class AgentChat:
             tool_call_buf: dict[int, dict] = {}  # index -> {id, name, arguments}
             for chunk in response:
                 delta = chunk.choices[0].delta
+
+                # 【新增】捕获深度思考模型的推理过程
+                reasoning = getattr(delta, "reasoning_content", None)
+                if reasoning is not None:
+                    yield ReasoningChunk(content=reasoning)
 
                 # 文本内容
                 if delta.content is not None:
