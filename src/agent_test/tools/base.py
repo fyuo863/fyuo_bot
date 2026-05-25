@@ -136,3 +136,25 @@ class MCPToolAdapter(BaseTool):
         # 调用 mcp_client.call_tool(self.name, arguments=kwargs)
         result = await self.mcp_client.call_tool(self.name, arguments=kwargs)
         return result.content
+
+class LetUserAnswer(BaseTool):
+    name = "let_user_answer"
+    description = (
+        "当你需要用户提供额外信息或确认时，必须使用此工具。"
+        "例如：缺少城市名无法查天气、需要用户确认操作、需要用户补充任何信息。"
+        "切勿在文本回复中直接提问，必须通过此工具。"
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "question": {
+                "type": "string",
+                "description": "需要向用户提出的具体问题或要求"
+            }
+        },
+        "required": ["question"]
+    }
+
+    def execute(self, question: str, **kwargs) -> str:
+        # 这里不需要任何逻辑，直接返回一个标志，让 main.py 捕捉到并向用户 input
+        return f"USER_INPUT_REQUIRED: {question}"
