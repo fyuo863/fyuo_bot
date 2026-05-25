@@ -1,5 +1,18 @@
+from dataclasses import dataclass
 from openai import OpenAI
-from config import config
+from config.config import api_key, base_url, model_name
+
+
+@dataclass
+class TextChunk:
+    content: str
+
+
+@dataclass
+class ToolCall:
+    call_id: str
+    name: str
+    arguments: str  # JSON 字符串
 
 
 class AgentChat:
@@ -11,27 +24,77 @@ class AgentChat:
         return response
 
     @staticmethod
-    def chat(prompt: str, system: str | None = None, stream: bool = True):
-        """注意：这里不再直接 return 一个字符串，而是变成了一个持续产出数据的生成器"""
-        client = OpenAI(api_key = config.api_key, base_url = config.base_url)
-        
+    def chat(
+        prompt: str,
+        system: str | None = None,
+        stream: bool = True,
+        tools: list[dict] | None = None,
+    ):
+        """流式对话生成器，支持 tool calling。
+
+        Yields:
+            TextChunk: 文本片段
+            ToolCall:  模型请求调用工具的意图（仅在 tools 参数传入时可能产生）
+        """
+        client = OpenAI(api_key=api_key, base_url=base_url)
+
         messages: list[dict[str, str]] = []
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        # 开启流式
-        response = client.chat.completions.create(
-            model=config.model_name,
+        kwargs = dict(
+            model=model_name,
             messages=messages,
             temperature=0.7,
-            stream=stream, 
+            stream=stream,
         )
+        if tools:
+            kwargs["tools"] = tools
+
+        response = client.chat.completions.create(**kwargs)
+
         if stream:
-            # 【关键修改】遍历 Stream 对象，用 yield 逐个吐出文字块
+            tool_call_buf: dict[int, dict] = {}  # index -> {id, name, arguments}
             for chunk in response:
-                delta_content = chunk.choices[0].delta.content
-                if delta_content is not None:
-                    yield delta_content
-        else:        # 如果不使用流式，则直接返回完整回复
-            yield response.choices[0].message.content
+                delta = chunk.choices[0].delta
+
+                # 文本内容
+                if delta.content is not None:
+                    yield TextChunk(content=delta.content)
+
+                # tool call 增量
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_call_buf:
+                            tool_call_buf[idx] = {"call_id": "", "name": "", "arguments": ""}
+                        entry = tool_call_buf[idx]
+                        if tc.id:
+                            entry["call_id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                entry["name"] = tc.function.name
+                            if tc.function.arguments:
+                                entry["arguments"] += tc.function.arguments
+
+            # 流结束后，产出完整的 tool call
+            for idx in sorted(tool_call_buf.keys()):
+                entry = tool_call_buf[idx]
+                if entry["name"]:
+                    yield ToolCall(
+                        call_id=entry["call_id"],
+                        name=entry["name"],
+                        arguments=entry["arguments"],
+                    )
+        else:
+            message = response.choices[0].message
+            if message.content:
+                yield TextChunk(content=message.content)
+            if message.tool_calls:
+                for tc in message.tool_calls:
+                    yield ToolCall(
+                        call_id=tc.id,
+                        name=tc.function.name,
+                        arguments=tc.function.arguments,
+                    )

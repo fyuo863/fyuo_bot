@@ -1,0 +1,81 @@
+"""
+工具模板 —— 复制此文件来创建新工具。
+
+每个工具需要提供：
+1. name / description   — 给大模型看的，决定何时调用
+2. parameters           — JSON Schema 格式，定义参数
+3. to_openai_schema()   — 转成 OpenAI tool 定义（基类已实现）
+4. execute(**kwargs)    — 实际执行逻辑
+
+快速创建步骤：
+  1. 复制 GetWeatherTool，改类名
+  2. 修改 name / description / parameters 三个类属性
+  3. 实现 execute 方法
+"""
+from abc import ABC, abstractmethod
+
+
+class BaseTool(ABC):
+    """工具基类 —— 所有工具继承这个，覆盖三个类属性即可"""
+
+    name: str = ""
+    description: str = ""
+    parameters: dict = {}
+
+    def to_openai_schema(self) -> dict:
+        """生成 OpenAI 兼容的 tool 定义"""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+    @abstractmethod
+    def execute(self, **kwargs) -> str:
+        """执行工具逻辑，返回字符串结果"""
+        ...
+
+
+# ============================================================
+# 示例工具
+# ============================================================
+
+class GetWeatherTool(BaseTool):
+    name = "get_weather"
+    description = "获取指定城市的当前天气"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "city": {
+                "type": "string",
+                "description": "城市名称，例如 Beijing",
+            }
+        },
+        "required": ["city"],
+    }
+
+    def execute(self, city: str = "", **kwargs) -> str:
+        # 这里接入真实天气 API
+        return f"{city} 当前天气：晴，25°C，湿度 60%"
+
+
+class GetLocationTool(BaseTool):
+    name = "get_location"
+    description = "获取当前的位置"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "location": {
+                "type": "string",
+                "description": "",
+            }
+        },
+        "required": ["location"],
+    }
+
+    def execute(self: str = "", **kwargs) -> str:
+        # 这里接入真实天气 API
+        return f"当前位置为杭州"
