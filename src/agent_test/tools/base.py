@@ -76,23 +76,8 @@ class GetLocationTool(BaseTool):
         "required": ["location"],
     }
 
-    def execute(self: str = "", **kwargs) -> str:
-        # 这里接入真实天气 API
-        return f"当前位置为杭州"
-
-class GetEndTool(BaseTool):
-    name = "get_end"
-    description = "达成所有目标后调用,用于结束对话"
-    parameters = {
-        "type": "object",
-        "properties": {
-        },
-        "required": ["end"],
-    }
-
-    def execute(self: str = "", **kwargs) -> str:
-        # 这里接入真实天气 API
-        return f"回答完毕"
+    def execute(self, location: str = "", **kwargs) -> str:
+        return "当前位置"
 
 class ReadFileTool(BaseTool):
     name = "read_file"
@@ -118,3 +103,25 @@ class ReadFileTool(BaseTool):
                 return f.read()
         except Exception as e:
             return f"读取文件失败: {str(e)}"
+        
+class LetUserAnswer(BaseTool):
+    name = "let_user_answer"
+    description = (
+        "当你需要用户提供额外信息或确认时，必须使用此工具。"
+        "例如：缺少城市名无法查天气、需要用户确认操作、需要用户补充任何信息。"
+        "切勿在文本回复中直接提问，必须通过此工具。"
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "question": {
+                "type": "string",
+                "description": "需要向用户提出的具体问题或要求"
+            }
+        },
+        "required": ["question"]
+    }
+
+    def execute(self, question: str, **kwargs) -> str:
+        # 这里不需要任何逻辑，直接返回一个标志，让 main.py 捕捉到并向用户 input
+        return f"USER_INPUT_REQUIRED: {question}"

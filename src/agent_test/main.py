@@ -1,5 +1,5 @@
 from core.chat import AgentChat, TextChunk, ToolCall, ReasoningChunk
-from tools.base import GetWeatherTool, GetLocationTool
+from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer
 from core.usage import Usage
 import json
 
@@ -12,7 +12,8 @@ def main():
     # 1. 准备工具 (去掉了 GetEndTool，因为不需要)
     weather_tool = GetWeatherTool()
     location_tool = GetLocationTool()
-    tools = [weather_tool.to_openai_schema(), location_tool.to_openai_schema()]
+    user_answer_tool = LetUserAnswer()
+    tools = [weather_tool.to_openai_schema(), location_tool.to_openai_schema(), user_answer_tool.to_openai_schema()]
 
     input_text = "我这里今天天气怎么样？"
 
@@ -22,7 +23,11 @@ def main():
 
     # 2. 初始化全局对话上下文（标准的 OpenAI 格式）
     messages = [
-        {"role": "system", "content": "你是一个生活助手，可以调用工具获取信息。"},
+        {"role": "system", "content": (
+            "你是一个生活助手，可以调用工具获取信息。"
+            "重要规则：当你需要向用户提问或索要信息时，必须调用 let_user_answer 工具，"
+            "禁止直接在回复文本中向用户提问。"
+        )},
         {"role": "user", "content": input_text}
     ]
 
@@ -64,16 +69,35 @@ def main():
         for tool_call in assistant_msg["tool_calls"]:
             func_name = tool_call["function"]["name"]
             args = json.loads(tool_call["function"]["arguments"])
-            
+
+            if func_name == user_answer_tool.name:
+                # LetUserAnswer: 暂停循环，向用户提问，获取终端输入
+                question = args.get("question", "")
+                print(f"{GREEN}[Agent 提问] {question}{RESET}")
+                user_response = input(f"{BOLD}你的回答: {RESET}")
+
+                # 先补一个 tool 角色回执（API 协议要求）
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call["id"],
+                    "content": "用户已收到问题"
+                })
+                # 再将用户输入作为 user 角色追加，agent 即可感知
+                messages.append({
+                    "role": "user",
+                    "content": user_response
+                })
+                continue  # 跳过通用的 tool result 追加
+
             # 路由并执行本地工具
             result = ""
             if func_name == weather_tool.name:
                 result = weather_tool.execute(**args)
             elif func_name == location_tool.name:
                 result = location_tool.execute(**args)
-            
-            print(f"[本地执行完成] {func_name} 返回结果: {result}")
-            
+
+            print(f"{GREEN}[工具返回] {func_name}: {result}{RESET}")
+
             # 7. 【回传结果】将真实的执行结果打包成 tool 角色，追加到上下文中
             messages.append({
                 "role": "tool",
