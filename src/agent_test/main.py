@@ -29,17 +29,22 @@ def main():
     )
     agent_tool.workspace = WORKSPACE  # 设置工作区
 
-    # 3. 从命令行读入用户问题
-    user_input = input("\n请输入你的问题: ").strip()
-    if not user_input:
-        print("问题不能为空")
-        return
-
-    # 4. 手动调用触发 agent（显示在 execute 内部完成）
-    agent_tool.execute(
-        system="你是一个agent主管，可以调用工具获取信息，根据任务的复杂程度自行选择自己解决还是调用子agent解决，决定调用agent前要说明。",
-        prompt=user_input,
+    SYSTEM_PROMPT = (
+        "你是一个agent主管，可以调用工具获取信息，"
+        "根据任务的复杂程度自行选择自己解决还是调用子agent解决，"
+        "决定调用agent前要说明。"
     )
+
+    # 3. 对话死循环：用户输入 → ReAct → 返回结果 → 用户输入 ...
+    while True:
+        user_input = input("\nUser: ").strip()
+        if not user_input:
+            continue
+        if user_input.lower() in ("exit", "quit", "q"):
+            print("已退出")
+            break
+
+        agent_tool.execute(system=SYSTEM_PROMPT, prompt=user_input)
 
 
 if __name__ == "__main__":

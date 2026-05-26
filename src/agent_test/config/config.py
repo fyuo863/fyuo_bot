@@ -8,7 +8,7 @@ base_url = os.getenv("OPENAI_BASE_URL")
 MODEL_REGISTRY = {
     "deepseek-v4-flash": {
         "name": "deepseek-v4-flash",
-        "description": "轻量快速模型，适合简单任务、格式转换、摘要等",
+        "description": "轻量快速模型，适合阅读文档、简单任务、格式转换、摘要等",
         "tier": "simple",
     },
     "deepseek-v4-pro": {
