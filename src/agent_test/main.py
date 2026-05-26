@@ -3,8 +3,8 @@ import uuid
 
 from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFilesTool, ReadFileTool, DoCommand
 from tools.agent_tool import AgentTool, GetModelList
-from tools.memory_tools import AddMemoryTool, RemoveMemoryTool, GetMemoryTool
-from memory import MemoryManager
+from tools.memory_tools import ReplaceMemoryTool, GetHistoryTool
+from memory import MemoryManager, HistoryManager
 
 WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -12,12 +12,15 @@ WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 memory_manager = MemoryManager(WORKSPACE)
 memory_snapshot = memory_manager.get_snapshot()
 
+# ---- 初始化历史记录 (SQLite) ----
+history_manager = HistoryManager(WORKSPACE)
+
 SYSTEM_PROMPT = (
     "你是一个agent主管，根据任务的复杂程度自行选择自己解决还是调用子agent解决，"
     "可以调用工具获取信息，"
     "决定调用agent前要说明。\n"
     "\n"
-    "你有持久记忆能力，可以使用 add_memory / remove_memory / get_memory 工具管理记忆。"
+    "你有持久记忆能力，使用 replace_memory 管理记忆，使用 get_history 搜索历史对话。"
     "记录高信息密度的精简短句。当添加记忆超出容量时，先查看现有内容，"
     "合并相似条目、精简废话后再重试。\n"
     "\n"
@@ -27,13 +30,11 @@ SYSTEM_PROMPT = (
 
 
 def main():
-    # 创建记忆工具并注入 MemoryManager
-    add_memory_tool = AddMemoryTool()
-    add_memory_tool.memory_manager = memory_manager
-    remove_memory_tool = RemoveMemoryTool()
-    remove_memory_tool.memory_manager = memory_manager
-    get_memory_tool = GetMemoryTool()
-    get_memory_tool.memory_manager = memory_manager
+    # 创建记忆/历史工具并注入管理器
+    replace_memory_tool = ReplaceMemoryTool()
+    replace_memory_tool.memory_manager = memory_manager
+    get_history_tool = GetHistoryTool()
+    get_history_tool.history_manager = history_manager
 
     sub_tools = [
         GetWeatherTool(),
@@ -43,9 +44,8 @@ def main():
         ReadFileTool(),
         DoCommand(),
         GetModelList(),
-        add_memory_tool,
-        remove_memory_tool,
-        get_memory_tool,
+        replace_memory_tool,
+        get_history_tool,
         AgentTool(),
     ]
 
@@ -67,7 +67,9 @@ def main():
             print("已退出")
             break
 
-        agent_tool.chat(system=SYSTEM_PROMPT, prompt=user_input)
+        result = agent_tool.chat(system=SYSTEM_PROMPT, prompt=user_input)
+        if result:
+            history_manager.save_turn(agent_tool.session_id, user_input, result)
 
 
 if __name__ == "__main__":

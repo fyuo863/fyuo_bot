@@ -1,8 +1,8 @@
 """
-记忆持久化工具 —— 供 Agent 调用的 add_memory / remove_memory。
+记忆与历史工具 —— 供 Agent 调用的 replace_memory / get_history。
 
-- add_memory: 添加新记忆，超出容量时返回错误及当前全文，触发 Agent 整合。
-- remove_memory: 通过唯一子串匹配定位，删除或替换旧记忆。
+- replace_memory: 统一的记忆修改（追加 / 替换 / 删除），基于唯一子串匹配。
+- get_history: 从 SQLite 搜索历史对话。
 """
 
 from dataclasses import dataclass, field
@@ -11,16 +11,17 @@ from .base import BaseTool
 
 
 @dataclass
-class AddMemoryTool(BaseTool):
+class ReplaceMemoryTool(BaseTool):
 
-    name: str = "add_memory"
+    name: str = "replace_memory"
     description: str = (
-        "添加一条新的持久记忆。记忆分为两种类型："
-        "MEMORY（项目规范、工作习惯、经验教训等客观事实）和 "
-        "USER（用户身份、偏好、技术水平等个性化信息）。"
-        "记录高信息密度的精简短句。"
-        "如果返回容量不足的错误，请用 get_memory 查看现有内容，"
-        "用 remove_memory 整合精简后再重试。"
+        "修改持久记忆。记忆分为 MEMORY（项目规范、工作习惯、经验教训）"
+        "和 USER（用户身份、偏好、技术水平）。\n"
+        "三种模式：\n"
+        "  - 新增：old_text 留空，new_text 填要添加的内容\n"
+        "  - 替换：old_text 填原记忆中的唯一子串，new_text 填替换内容\n"
+        "  - 删除：old_text 填要删除的唯一子串，new_text 留空\n"
+        "超出容量时会返回错误及当前全文，需整合精简后重试。"
     )
     parameters: dict = field(default_factory=lambda: {
         "type": "object",
@@ -28,51 +29,18 @@ class AddMemoryTool(BaseTool):
             "type": {
                 "type": "string",
                 "enum": ["MEMORY", "USER"],
-                "description": "记忆类型：MEMORY=客观事实/项目规范，USER=用户个人信息",
-            },
-            "content": {
-                "type": "string",
-                "description": "要添加的记忆内容，建议为一句高密度精简短句",
-            },
-        },
-        "required": ["type", "content"],
-    })
-
-    memory_manager: object = None
-
-    def execute(self, type: str = "", content: str = "", **kwargs) -> str:
-        if not self.memory_manager:
-            return "错误：MemoryManager 未初始化。"
-        return self.memory_manager.add(type, content)
-
-
-@dataclass
-class RemoveMemoryTool(BaseTool):
-
-    name: str = "remove_memory"
-    description: str = (
-        "通过唯一子串匹配删除或替换旧记忆。只需提供原记忆中独一无二的"
-        "一小段文字（old_text）即可精准定位。若提供 new_text 则替换，"
-        "否则直接删除该条目。用于修正过时信息或整合精简记忆。"
-    )
-    parameters: dict = field(default_factory=lambda: {
-        "type": "object",
-        "properties": {
-            "type": {
-                "type": "string",
-                "enum": ["MEMORY", "USER"],
-                "description": "记忆类型：MEMORY 或 USER",
+                "description": "记忆类型",
             },
             "old_text": {
                 "type": "string",
-                "description": "原记忆中独一无二的一小段文字，用于定位要删除/替换的条目",
+                "description": "原记忆中要替换/删除的片段（唯一子串），留空表示追加新条目",
             },
             "new_text": {
                 "type": "string",
-                "description": "替换后的新文本。留空则直接删除匹配条目。",
+                "description": "替换后的新文本。old_text 留空时表示要添加的内容；new_text 留空时表示删除",
             },
         },
-        "required": ["type", "old_text"],
+        "required": ["type", "old_text", "new_text"],
     })
 
     memory_manager: object = None
@@ -80,33 +48,45 @@ class RemoveMemoryTool(BaseTool):
     def execute(self, type: str = "", old_text: str = "", new_text: str = "", **kwargs) -> str:
         if not self.memory_manager:
             return "错误：MemoryManager 未初始化。"
-        new = new_text if new_text else None
-        return self.memory_manager.remove(type, old_text, new)
+        return self.memory_manager.replace(type, old_text, new_text)
 
 
 @dataclass
-class GetMemoryTool(BaseTool):
-
-    name: str = "get_memory"
+class GetHistoryTool(BaseTool):
+    name: str = "get_history"
+    # 【修改 1】优化描述：明确告诉大模型什么情况下传空，什么情况下传词，且教它避开废话
     description: str = (
-        "查看当前全部记忆内容。在整合精简记忆前使用，"
-        "以便了解现有条目并做出合并/删除决策。"
+        "获取历史对话记录。"
+        "1. 如果用户要求'总结之前的聊天'或没有特定的搜索目标，请将 query 留空，以获取最近的历史记录。\n"
+        "2. 如果用户寻找特定话题，请提取【具体的核心名词】（如'代码'、'报错'、'水饺'）。\n"
+        "警告：绝不能使用'聊天'、'刚才'、'用户'等无意义的口语词作为关键词！"
     )
     parameters: dict = field(default_factory=lambda: {
         "type": "object",
         "properties": {
-            "type": {
+            "query": {
                 "type": "string",
-                "enum": ["MEMORY", "USER"],
-                "description": "要查看的记忆类型",
+                "description": "搜索关键词。如果不需要特定关键词，请务必传入空字符串 \"\"",
             },
+            # 【修改 2】增加 limit 参数，让大模型可以控制召回范围
+            "limit": {
+                "type": "integer",
+                "description": "需要返回的最近对话条数，默认 10，最多 50",
+            }
         },
-        "required": ["type"],
+        # 【修改 3】query 依然可以必填，但允许大模型传 "" (空字符串)
+        "required": ["query"], 
     })
 
-    memory_manager: object = None
+    history_manager: object = None
 
-    def execute(self, type: str = "", **kwargs) -> str:
-        if not self.memory_manager:
-            return "错误：MemoryManager 未初始化。"
-        return self.memory_manager.get_all(type)
+    def execute(self, query: str = "", limit: int = 10, **kwargs) -> str:
+        if not self.history_manager:
+            return "错误：HistoryManager 未初始化。"
+        
+        # 逻辑分流
+        if not query or query.strip() == "":
+            # 注意这里方法名叫 get_recent
+            return self.history_manager.get_recent(limit=limit) 
+        else:
+            return self.history_manager.search(query, limit=limit)
