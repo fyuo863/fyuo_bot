@@ -46,8 +46,11 @@ class ReActAgent:
         tools: list[BaseTool],
         system: str = "",
         model: str | None = None,
+        workspace: str = "",
     ):
         self.tool_registry: dict[str, BaseTool] = {t.name: t for t in tools}
+        for t in self.tool_registry.values():
+            t.workspace = workspace
         self.system = system
         self.model = model
         self.messages: list[dict] = []

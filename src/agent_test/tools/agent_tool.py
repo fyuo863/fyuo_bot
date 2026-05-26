@@ -113,7 +113,7 @@ class AgentTool(BaseTool):
         print(f"User:  {prompt}")
         print("=" * 50)
 
-        agent = ReActAgent(tools=child_tools, system=system, model=effective_model)
+        agent = ReActAgent(tools=child_tools, system=system, model=effective_model, workspace=self.workspace)
         return self._run_loop(agent, prompt, is_resume=False)
 
     def _run_loop(self, agent: ReActAgent, user_input: str, is_resume: bool) -> str:
