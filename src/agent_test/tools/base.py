@@ -14,6 +14,7 @@
 """
 from abc import ABC, abstractmethod
 import requests
+import asyncio
 
 
 class BaseTool(ABC):
@@ -109,3 +110,29 @@ class ReadFileTool(BaseTool):
                 return f.read()
         except Exception as e:
             return f"读取文件失败: {str(e)}"
+        
+class MCPToolAdapter(BaseTool):
+    """
+    这是一个通用的适配器，负责将远端 MCP Server 中的工具
+    包装成您本地大模型认识的 BaseTool 格式。
+    """
+    def __init__(self, mcp_client, tool_name: str, description: str, parameters: dict):
+        self.mcp_client = mcp_client
+        self.name = tool_name
+        self.description = description
+        self.parameters = parameters
+
+    def execute(self, **kwargs) -> str:
+        # 因为您的 Agent 框架目前是同步的，而 MCP SDK 是异步的
+        # 所以我们在这里使用 asyncio.run 来执行实际的远端调用
+        try:
+            result = asyncio.run(self._async_execute(**kwargs))
+            return str(result)
+        except Exception as e:
+            return f"调用 MCP 工具 {self.name} 时发生错误: {str(e)}"
+
+    async def _async_execute(self, **kwargs):
+        # 实际调用远端 MCP Server 的逻辑
+        # 调用 mcp_client.call_tool(self.name, arguments=kwargs)
+        result = await self.mcp_client.call_tool(self.name, arguments=kwargs)
+        return result.content
