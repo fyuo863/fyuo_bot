@@ -6,8 +6,8 @@ from tools.agent_tool import AgentTool, GetModelList
 WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
 SYSTEM_PROMPT = (
-    "你是一个agent主管，根据任务的复杂程度自行选择自己解决还是调用子agent解决，"
-    "可以调用工具获取信息，"
+    "你是一个agent主管，你的职责是根据用户提问制定执行计划，并按照计划内容的复杂程度调用子agent执行。"
+    "子agent可以调用工具获取信息，"
     "决定调用agent前要说明。"
 )
 

@@ -34,7 +34,7 @@ class AgentTool(BaseTool):
     description: str = (
         "启动一个子 Agent 处理复杂任务。当你需要多步骤推理、"
         "调用多个工具协作完成一个目标时使用。调用前先调 get_model_list 了解可用模型，"
-        "根据任务复杂度选择 model：简单任务用 flash，复杂推理用 pro。"
+        "根据任务复杂度选择 model"
     )
     parameters: dict = field(default_factory=lambda: {
         "type": "object",
