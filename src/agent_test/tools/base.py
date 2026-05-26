@@ -6,26 +6,22 @@
 2. parameters           — JSON Schema 格式，定义参数
 3. to_openai_schema()   — 转成 OpenAI tool 定义（基类已实现）
 4. execute(**kwargs)    — 实际执行逻辑
-
-快速创建步骤：
-  1. 复制 GetWeatherTool，改类名
-  2. 修改 name / description / parameters 三个类属性
-  3. 实现 execute 方法
 """
+import os
 from abc import ABC, abstractmethod
 import requests
 import asyncio
 
 
 class BaseTool(ABC):
-    """工具基类 —— 所有工具继承这个，覆盖三个类属性即可"""
+    """工具基类。workspace 由 Agent 启动时自动注入。"""
 
     name: str = ""
     description: str = ""
     parameters: dict = {}
+    workspace: str = ""
 
     def to_openai_schema(self) -> dict:
-        """生成 OpenAI 兼容的 tool 定义"""
         return {
             "type": "function",
             "function": {
@@ -35,14 +31,24 @@ class BaseTool(ABC):
             },
         }
 
+    def resolve_path(self, relative_path: str) -> str:
+        """安全解析工作区内路径，阻止 ../ 越权。返回绝对路径。"""
+        if not self.workspace:
+            raise RuntimeError("workspace 未设置")
+        ws = os.path.abspath(self.workspace)
+        target = os.path.normpath(os.path.join(ws, relative_path))
+        target = os.path.abspath(target)
+        if os.path.commonpath([ws, target]) != ws:
+            raise ValueError(f"禁止访问工作区外的路径: {relative_path}")
+        return target
+
     @abstractmethod
     def execute(self, **kwargs) -> str:
-        """执行工具逻辑，返回字符串结果"""
         ...
 
 
 # ============================================================
-# 示例工具
+# 内置工具
 # ============================================================
 
 class GetWeatherTool(BaseTool):
@@ -51,16 +57,12 @@ class GetWeatherTool(BaseTool):
     parameters = {
         "type": "object",
         "properties": {
-            "city": {
-                "type": "string",
-                "description": "城市名称，例如 Beijing",
-            }
+            "city": {"type": "string", "description": "城市名称，例如 Beijing"},
         },
         "required": ["city"],
     }
 
     def execute(self, city: str = "", **kwargs) -> str:
-        # 这里接入真实天气 API
         return f"{city} 当前天气：晴，25°C，湿度 60%"
 
 
@@ -70,78 +72,83 @@ class GetLocationTool(BaseTool):
     parameters = {
         "type": "object",
         "properties": {
-            "query": {"type": "string", "description": "固定传 'self'"}
+            "query": {"type": "string", "description": "固定传 'self'"},
         },
-        "required": []
+        "required": [],
     }
 
     def execute(self, **kwargs) -> str:
         try:
-            # 调用免费 IP 定位服务
             response = requests.get("http://ip-api.com/json/", timeout=5)
             data = response.json()
-            if data['status'] == 'success':
-                return data['city'] # 返回 "Hangzhou" 等
+            if data["status"] == "success":
+                return data["city"]
             return "未知城市"
         except Exception as e:
             return f"定位失败: {str(e)}"
 
+
 class ReadFileTool(BaseTool):
     name = "read_file"
-    description = "读取指定路径的文件内容"
+    description = "读取工作区内指定路径的文件内容"
     parameters = {
         "type": "object",
         "properties": {
             "file_path": {
                 "type": "string",
-                "description": "文件的完整路径，例如 'workspace/data.txt'"
+                "description": "相对于工作区的文件路径，例如 'src/main.py'",
             }
         },
-        "required": ["file_path"]
+        "required": ["file_path"],
     }
 
-    def execute(self, file_path: str, **kwargs) -> str:
-        # 安全检查：限制只能读取特定目录，防止越权读取系统文件
-        if not file_path.startswith("workspace/"):
-            return "错误：禁止访问该路径的文件。"
-        
+    def execute(self, file_path: str = "", **kwargs) -> str:
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            abs_path = self.resolve_path(file_path)
+        except (ValueError, RuntimeError) as e:
+            return str(e)
+        try:
+            with open(abs_path, "r", encoding="utf-8") as f:
                 return f.read()
         except Exception as e:
             return f"读取文件失败: {str(e)}"
-        
-class MCPToolAdapter(BaseTool):
-    """
-    这是一个通用的适配器，负责将远端 MCP Server 中的工具
-    包装成您本地大模型认识的 BaseTool 格式。
-    """
-    def __init__(self, mcp_client, tool_name: str, description: str, parameters: dict):
-        self.mcp_client = mcp_client
-        self.name = tool_name
-        self.description = description
-        self.parameters = parameters
 
-    def execute(self, **kwargs) -> str:
-        # 因为您的 Agent 框架目前是同步的，而 MCP SDK 是异步的
-        # 所以我们在这里使用 asyncio.run 来执行实际的远端调用
+
+class ListFilesTool(BaseTool):
+    name = "list_files"
+    description = "列出工作区内指定目录的文件和子目录"
+    parameters = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "相对于工作区的目录路径，留空表示根目录",
+            }
+        },
+        "required": [],
+    }
+
+    def execute(self, path: str = "", **kwargs) -> str:
         try:
-            result = asyncio.run(self._async_execute(**kwargs))
-            return str(result)
+            abs_path = self.resolve_path(path) if path else os.path.abspath(self.workspace)
+        except (ValueError, RuntimeError) as e:
+            return str(e)
+        try:
+            entries = os.listdir(abs_path)
+            lines = [f"{abs_path}/"]
+            for name in sorted(entries):
+                full = os.path.join(abs_path, name)
+                tag = "/" if os.path.isdir(full) else ""
+                lines.append(f"  {name}{tag}")
+            return "\n".join(lines)
         except Exception as e:
-            return f"调用 MCP 工具 {self.name} 时发生错误: {str(e)}"
+            return f"列出目录失败: {str(e)}"
 
-    async def _async_execute(self, **kwargs):
-        # 实际调用远端 MCP Server 的逻辑
-        # 调用 mcp_client.call_tool(self.name, arguments=kwargs)
-        result = await self.mcp_client.call_tool(self.name, arguments=kwargs)
-        return result.content
 
 class LetUserAnswer(BaseTool):
     name = "let_user_answer"
     description = (
         "当你需要用户提供额外信息或确认时，必须使用此工具。"
-        "例如：缺少城市名无法查天气、需要用户确认操作、需要用户补充任何信息。"
         "切勿在文本回复中直接提问，必须通过此工具。"
     )
     parameters = {
@@ -149,12 +156,80 @@ class LetUserAnswer(BaseTool):
         "properties": {
             "question": {
                 "type": "string",
-                "description": "需要向用户提出的具体问题或要求"
+                "description": "需要向用户提出的具体问题或要求",
             }
         },
-        "required": ["question"]
+        "required": ["question"],
     }
 
-    def execute(self, question: str, **kwargs) -> str:
-        # 这里不需要任何逻辑，直接返回一个标志，让 main.py 捕捉到并向用户 input
+    def execute(self, question: str = "", **kwargs) -> str:
         return f"USER_INPUT_REQUIRED: {question}"
+
+
+class MCPToolAdapter(BaseTool):
+    """通用适配器，将远端 MCP Server 工具包装为 BaseTool。"""
+
+    def __init__(self, mcp_client, tool_name: str, description: str, parameters: dict):
+        self.mcp_client = mcp_client
+        self.name = tool_name
+        self.description = description
+        self.parameters = parameters
+
+    def execute(self, **kwargs) -> str:
+        try:
+            result = asyncio.run(self._async_execute(**kwargs))
+            return str(result)
+        except Exception as e:
+            return f"MCP 工具 {self.name} 错误: {str(e)}"
+
+    async def _async_execute(self, **kwargs):
+        result = await self.mcp_client.call_tool(self.name, arguments=kwargs)
+        return result.content
+
+class DoCommand(BaseTool):
+    name = "do_command"
+    description = (
+        "在工作区内执行 shell 命令。执行前会请求用户确认。"
+        "用于运行脚本、编译代码、安装依赖、git 操作等。"
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": "要执行的 shell 命令，例如 'python main.py' 或 'ls src/'",
+            }
+        },
+        "required": ["command"],
+    }
+
+    def execute(self, command: str = "", **kwargs) -> str:
+        import subprocess
+
+        # 请求用户确认
+        print(f"\n\033[33m[命令审批]\033[0m 即将执行:")
+        print(f"  \033[1m{command}\033[0m")
+        approval = input("是否同意执行? (y/n): ").strip().lower()
+        if approval != "y":
+            return f"用户拒绝了命令: {command}"
+
+        print(f"\033[2m执行中...\033[0m")
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                cwd=self.workspace or ".",
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            out = result.stdout
+            if result.stderr:
+                out += f"\n[stderr]\n{result.stderr}"
+            if result.returncode != 0:
+                out += f"\n(返回码: {result.returncode})"
+            return out or "(无输出)"
+        except subprocess.TimeoutExpired:
+            return "命令执行超时 (30s)"
+        except Exception as e:
+            return f"命令执行失败: {str(e)}"
