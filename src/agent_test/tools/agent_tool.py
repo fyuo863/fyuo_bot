@@ -1,5 +1,5 @@
 """
-AgentTool —— 将整个 ReAct Agent 封装为一个 BaseTool，支持嵌套和模型选择。
+AgentTool —— 将整个 ReAct Agent 封装为一个 BaseTool，支持嵌套、模型选择、记忆持久化。
 """
 
 from dataclasses import dataclass, field
@@ -20,6 +20,7 @@ BOLD = "\033[1m"
 DIM = "\033[2m"
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
+CYAN = "\033[36m"
 RESET = "\033[0m"
 
 
@@ -29,6 +30,8 @@ class AgentTool(BaseTool):
     sub_tools: list[BaseTool] = field(default_factory=list)
     model_label: str = "AI"
     max_depth: int = 3
+    memory_engine: object = None   # MemoryEngine 实例，可选
+    session_id: str = ""   # 记忆的 session 标识
 
     name: str = "run_agent"
     description: str = (
@@ -63,70 +66,65 @@ class AgentTool(BaseTool):
         effective_model = model if model in config.MODEL_REGISTRY else None
         model_info = config.MODEL_REGISTRY.get(model, config.MODEL_REGISTRY["deepseek-v4-pro"])
         self.model_label = model_info["name"]
-
         print(f"\n{YELLOW}[嵌套深度] 当前层剩余 {self.max_depth} 层 | 模型: {self.model_label}{RESET}")
-
         if self.max_depth <= 0:
             return "已达到最大嵌套深度，无法继续调用子 Agent。"
-
         child_depth = self.max_depth - 1
         child_tools: list[BaseTool] = []
         for t in self.sub_tools:
             if isinstance(t, AgentTool):
-                child_tools.append(AgentTool(
-                    sub_tools=t.sub_tools,
-                    model_label=t.model_label,
-                    max_depth=child_depth,
-                ))
+                child_tools.append(AgentTool(sub_tools=t.sub_tools, model_label=t.model_label, max_depth=child_depth))
             else:
                 child_tools.append(t)
-
         if child_depth <= 0:
-            system = (
-                "【深度警告】你已到达最大嵌套深度，必须直接完成任务，"
-                "禁止调用 run_agent 或其他子 Agent 工具。用最简单直接的方式回复用户。"
-                + system
-            )
-
+            system = ("【深度警告】你已到达最大嵌套深度，必须直接完成任务。" + system)
         print()
         print("=" * 50)
         print(f"User:  {prompt}")
         print("=" * 50)
-
         agent = ReActAgent(tools=child_tools, system=system, model=effective_model, workspace=self.workspace)
         return self._run_loop(agent, prompt, is_resume=False)
 
     def chat(self, system: str, prompt: str, model: str = "") -> str:
-        """多轮对话模式：首次自动创建 agent，后续复用历史。"""
+        """多轮对话模式：带记忆检索和持久化。"""
+        # ---- 记忆检索 ----
+        memory_context = ""
+        if self.memory_engine:
+            memory_context = self.memory_engine.retrieve_memory(prompt)
+            if memory_context:
+                print(f"{CYAN}[记忆] 已加载相关历史记忆{RESET}")
+
+        enriched_system = system + memory_context
+
         if self._agent is None:
-            # 首次：创建 agent 并 run
             effective_model = model if model in config.MODEL_REGISTRY else None
             model_info = config.MODEL_REGISTRY.get(model, config.MODEL_REGISTRY["deepseek-v4-pro"])
             self.model_label = model_info["name"]
             child_depth = self.max_depth - 1
             child_tools = self._build_child_tools(child_depth)
-            active_system = system
+            active_system = enriched_system
             if child_depth <= 0:
-                active_system = (
-                    "【深度警告】你已到达最大嵌套深度，必须直接完成任务。"
-                    + system
-                )
+                active_system = ("【深度警告】你已到达最大嵌套深度，必须直接完成任务。" + enriched_system)
             self._agent = ReActAgent(tools=child_tools, system=active_system, model=effective_model, workspace=self.workspace)
             gen = self._agent.run(prompt)
         else:
             gen = self._agent.continue_conversation(prompt)
 
-        return self._run_loop_direct(gen)
+        final_text = self._run_loop_direct(gen)
+
+        # ---- 记忆持久化 ----
+        if self.memory_engine and final_text:
+            import time
+            sid = self.session_id or str(int(time.time()))
+            self.memory_engine.save_memory(sid, prompt, final_text)
+
+        return final_text
 
     def _build_child_tools(self, child_depth: int) -> list[BaseTool]:
         child_tools: list[BaseTool] = []
         for t in self.sub_tools:
             if isinstance(t, AgentTool):
-                child_tools.append(AgentTool(
-                    sub_tools=t.sub_tools,
-                    model_label=t.model_label,
-                    max_depth=child_depth,
-                ))
+                child_tools.append(AgentTool(sub_tools=t.sub_tools, model_label=t.model_label, max_depth=child_depth))
             else:
                 child_tools.append(t)
         return child_tools
@@ -145,20 +143,16 @@ class AgentTool(BaseTool):
                     print(f"\n{DIM}[思考过程]", end="", flush=True)
                     reasoning_printed = True
                 print(event.content, end="", flush=True)
-
             elif isinstance(event, TextChunk):
                 if reasoning_printed:
                     print(f"{RESET}\n{self.model_label}:    {BOLD}", end="", flush=True)
                     reasoning_printed = False
                 print(event.content, end="", flush=True)
                 final_text += event.content
-
             elif isinstance(event, ToolCall):
                 print(f"\n{GREEN}[调用工具] {event.name}{RESET}")
-
             elif isinstance(event, ToolResult):
                 print(f"{GREEN}[工具返回] {event.name}: {event.result}{RESET}")
-
             elif isinstance(event, UserInputRequired):
                 question = event.question
                 print(f"\n{GREEN}[Agent 提问] {question}{RESET}")
@@ -166,7 +160,6 @@ class AgentTool(BaseTool):
                 self._agent.feed_user_response(user_response, event.call_id)
                 print("-" * 50)
                 return self._run_loop_direct(self._agent.resume())
-
             elif isinstance(event, AgentComplete):
                 print(RESET)
                 print("-" * 50)

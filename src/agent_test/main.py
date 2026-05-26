@@ -1,18 +1,23 @@
 import os
+import uuid
 
 from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFilesTool, ReadFileTool, DoCommand
 from tools.agent_tool import AgentTool, GetModelList
+from memory.memory import MemoryEngine
 
 WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
 SYSTEM_PROMPT = (
-    "你是一个agent主管，你的职责是根据用户提问制定执行计划，并按照计划内容的复杂程度调用子agent执行。"
-    "子agent可以调用工具获取信息，"
+    "你是一个agent主管，根据任务的复杂程度自行选择自己解决还是调用子agent解决，"
+    "可以调用工具获取信息，"
     "决定调用agent前要说明。"
 )
 
 
 def main():
+    # 初始化记忆引擎（ChromaDB 本地持久化）
+    memory = MemoryEngine(db_path=os.path.join(WORKSPACE, "AgentMemory"))
+
     sub_tools = [
         GetWeatherTool(),
         GetLocationTool(),
@@ -28,6 +33,8 @@ def main():
         sub_tools=sub_tools,
         model_label="fyuo-bot",
         max_depth=3,
+        memory_engine=memory,
+        session_id=str(uuid.uuid4())[:8],  # 每次启动一个唯一 session
     )
     agent_tool.workspace = WORKSPACE
 
@@ -39,7 +46,6 @@ def main():
             print("已退出")
             break
 
-        # chat() 首次自动创建 agent，后续复用历史 → 多轮记忆
         agent_tool.chat(system=SYSTEM_PROMPT, prompt=user_input)
 
 
