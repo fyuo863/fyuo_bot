@@ -45,9 +45,11 @@ class ReActAgent:
         self,
         tools: list[BaseTool],
         system: str = "",
+        model: str | None = None,
     ):
         self.tool_registry: dict[str, BaseTool] = {t.name: t for t in tools}
         self.system = system
+        self.model = model
         self.messages: list[dict] = []
 
     def _tool_schemas(self) -> list[dict]:
@@ -66,6 +68,7 @@ class ReActAgent:
             for item in AgentChat.chat(
                 messages=self.messages,
                 tools=self._tool_schemas(),
+                model=self.model,
             ):
                 stream_items.append(item)
                 yield item
@@ -124,6 +127,7 @@ class ReActAgent:
             for item in AgentChat.chat(
                 messages=self.messages,
                 tools=self._tool_schemas(),
+                model=self.model,
             ):
                 stream_items.append(item)
                 yield item

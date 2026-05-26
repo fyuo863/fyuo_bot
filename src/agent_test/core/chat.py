@@ -31,9 +31,10 @@ class AgentChat:
 
     @staticmethod
     def chat(
-        messages: list[dict],  # 【关键修改 1】不再接收单句 prompt 和 system，直接接收完整的上下文列表
+        messages: list[dict],
         stream: bool = True,
         tools: list[dict] | None = None,
+        model: str | None = None,
     ):
         """流式对话生成器，支持 tool calling。
 
@@ -41,15 +42,11 @@ class AgentChat:
             TextChunk: 文本片段
             ToolCall:  模型请求调用工具的意图（仅在 tools 参数传入时可能产生）
         """
-        # 注意：请确保 api_key 和 base_url 已经在外部正确获取或导入
         client = OpenAI(api_key=api_key, base_url=base_url)
 
-        # 【关键修改 2】删除了这里原本手动组装 system 和 user 角色的代码
-        # 因为在真正的 Agent 循环中，这些角色和历史对话都已经存在于传入的 messages 列表里了
-
         kwargs = dict(
-            model=model_name,
-            messages=messages,  # 【关键修改 3】直接将完整的历史列表透传给 API
+            model=model or model_name,
+            messages=messages,
             temperature=0.7,
             stream=stream,
         )

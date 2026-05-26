@@ -1,5 +1,6 @@
 from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer
-from tools.agent_tool import AgentTool
+from tools.agent_tool import AgentTool, GetModelList
+from config import config
 
 
 def main():
@@ -8,18 +9,21 @@ def main():
         GetWeatherTool(),
         GetLocationTool(),
         LetUserAnswer(),
+        GetModelList(),
+        AgentTool(),
     ]
 
     # 2. 将 Agent 流程封装为工具（max_depth 内部控制，模型不可见）
     agent_tool = AgentTool(
         sub_tools=sub_tools,
-        model_label="DeepSeek",
+        model_label="deepseek",  # 显示用标签，实际模型由 execute 时参数控制
         max_depth=3,
     )
 
     # 3. 手动调用触发 agent
     result = agent_tool.execute(
-        system="你是一个生活助手，可以调用工具获取信息。",
+        # system="你是一个agent主管，可以调用工具获取信息，任何任务必须使用子agent执行，决定调用agent前要说明。",
+        system="你是一个agent主管，可以调用工具获取信息，根据任务的复杂程度自行选择自己解决还是调用子agent解决，决定调用agent前要说明。",
         prompt="我这里今天天气怎么样？",
     )
 

@@ -1,14 +1,18 @@
 """
-AgentTool —— 将整个 ReAct Agent 封装为一个 BaseTool，支持嵌套。
+AgentTool —— 将整个 ReAct Agent 封装为一个 BaseTool，支持嵌套和模型选择。
 
 深度控制:
   - max_depth 在构造时设定，不暴露给模型（模型无法篡改）
   - 每嵌套一层，子 AgentTool 的 max_depth 自动减 1
   - 深度归零时，最内层 agent 被强制以最简单方式完成任务
+
+模型选择:
+  - 调用 get_model_list 获取可用模型列表
+  - 调用 run_agent 时通过 model 参数指定子 agent 使用的模型
 """
 
 from dataclasses import dataclass, field
-
+from config import config
 from .base import BaseTool
 from core.agent import (
     ReActAgent,
@@ -25,6 +29,8 @@ DIM = "\033[2m"
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
+
+
 
 
 @dataclass
@@ -44,7 +50,10 @@ class AgentTool(BaseTool):
     name: str = "run_agent"
     description: str = (
         "启动一个子 Agent 处理复杂任务。当你需要多步骤推理、"
-        "调用多个工具协作完成一个目标时使用。"
+        "调用多个工具协作完成一个目标时使用。调用前先调 get_model_list 了解可用模型，"
+        "根据任务复杂度选择 model：简单任务用 flash，复杂推理用 pro。"
+        # "任何任务必须使用子agent执行，启动一个子 Agent 处理任务。调用前先调 get_model_list 了解可用模型，"
+        # "根据任务复杂度选择 model：简单任务用 flash，复杂推理用 pro。"
     )
     parameters: dict = field(default_factory=lambda: {
         "type": "object",
@@ -57,13 +66,22 @@ class AgentTool(BaseTool):
                 "type": "string",
                 "description": "需要子 Agent 处理的任务描述",
             },
+            "model": {
+                "type": "string",
+                "description": "指定子 Agent 使用的模型名称，从 get_model_list 返回的列表中选择",
+            },
         },
         "required": ["system", "prompt"],
     })
 
-    def execute(self, system: str = "", prompt: str = "", **kwargs) -> str:
-        """运行完整 ReAct 循环。深度由 self.max_depth 内部控制，模型无法传入。"""
-        print(f"\n{YELLOW}[嵌套深度] 当前层剩余 {self.max_depth} 层{RESET}")
+    def execute(self, system: str = "", prompt: str = "", model: str = "", **kwargs) -> str:
+        """运行完整 ReAct 循环。"""
+        # 解析模型名称：传入的 > 注册表中匹配的 > 默认 pro
+        effective_model = model if model in config.MODEL_REGISTRY else None
+        model_info = config.MODEL_REGISTRY.get(model, config.MODEL_REGISTRY["deepseek-v4-pro"])
+        self.model_label = model_info["name"]
+
+        print(f"\n{YELLOW}[嵌套深度] 当前层剩余 {self.max_depth} 层 | 模型: {self.model_label}{RESET}")
 
         if self.max_depth <= 0:
             return "已达到最大嵌套深度，无法继续调用子 Agent。"
@@ -95,7 +113,7 @@ class AgentTool(BaseTool):
         print(f"User:  {prompt}")
         print("=" * 50)
 
-        agent = ReActAgent(tools=child_tools, system=system)
+        agent = ReActAgent(tools=child_tools, system=system, model=effective_model)
         return self._run_loop(agent, prompt, is_resume=False)
 
     def _run_loop(self, agent: ReActAgent, user_input: str, is_resume: bool) -> str:
@@ -140,3 +158,23 @@ class AgentTool(BaseTool):
                 print("任务圆满完成！")
 
         return final_text
+
+
+@dataclass
+class GetModelList(BaseTool):
+    """告诉 Agent 当前可用的模型及其能力，供选择子 Agent 模型时参考。"""
+
+    name: str = "get_model_list"
+    description: str = "获取可用的模型列表，了解各模型的能力（简单/强力），在调用 run_agent 前使用"
+    parameters: dict = field(default_factory=lambda: {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    })
+
+    def execute(self, **kwargs) -> str:
+        lines = ["可用模型列表："]
+        for info in config.MODEL_REGISTRY.values():
+            lines.append(f"  - {info['name']} ({info['tier']}): {info['description']}")
+        lines.append("建议：简单/快速任务选简易模型，复杂推理/代码/数学选复杂模型。")
+        return "\n".join(lines)
