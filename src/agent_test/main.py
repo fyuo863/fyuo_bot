@@ -20,11 +20,16 @@ def main():
         max_depth=3,
     )
 
-    # 3. 手动调用触发 agent（显示在 execute 内部完成，不需要再打印返回值）
+    # 3. 从命令行读入用户问题
+    user_input = input("\n请输入你的问题: ").strip()
+    if not user_input:
+        print("问题不能为空")
+        return
+
+    # 4. 手动调用触发 agent（显示在 execute 内部完成）
     agent_tool.execute(
-        # system="你是一个agent主管，可以调用工具获取信息，任何任务必须使用子agent执行，决定调用agent前要说明。",
         system="你是一个agent主管，可以调用工具获取信息，根据任务的复杂程度自行选择自己解决还是调用子agent解决，决定调用agent前要说明。",
-        prompt="我这里今天天气怎么样？",
+        prompt=user_input,
     )
 
 
