@@ -185,3 +185,51 @@ class MCPToolAdapter(BaseTool):
     async def _async_execute(self, **kwargs):
         result = await self.mcp_client.call_tool(self.name, arguments=kwargs)
         return result.content
+
+class DoCommand(BaseTool):
+    name = "do_command"
+    description = (
+        "在工作区内执行 shell 命令。执行前会请求用户确认。"
+        "用于运行脚本、编译代码、安装依赖、git 操作等。"
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "command": {
+                "type": "string",
+                "description": "要执行的 shell 命令，例如 'python main.py' 或 'ls src/'",
+            }
+        },
+        "required": ["command"],
+    }
+
+    def execute(self, command: str = "", **kwargs) -> str:
+        import subprocess
+
+        # 请求用户确认
+        print(f"\n\033[33m[命令审批]\033[0m 即将执行:")
+        print(f"  \033[1m{command}\033[0m")
+        approval = input("是否同意执行? (y/n): ").strip().lower()
+        if approval != "y":
+            return f"用户拒绝了命令: {command}"
+
+        print(f"\033[2m执行中...\033[0m")
+        try:
+            result = subprocess.run(
+                command,
+                shell=True,
+                cwd=self.workspace or ".",
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            out = result.stdout
+            if result.stderr:
+                out += f"\n[stderr]\n{result.stderr}"
+            if result.returncode != 0:
+                out += f"\n(返回码: {result.returncode})"
+            return out or "(无输出)"
+        except subprocess.TimeoutExpired:
+            return "命令执行超时 (30s)"
+        except Exception as e:
+            return f"命令执行失败: {str(e)}"

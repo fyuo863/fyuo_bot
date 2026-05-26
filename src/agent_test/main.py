@@ -1,6 +1,6 @@
 import os
 
-from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFilesTool, ReadFileTool
+from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFilesTool, ReadFileTool, DoCommand
 from tools.agent_tool import AgentTool, GetModelList
 from config import config
 
@@ -16,6 +16,7 @@ def main():
         LetUserAnswer(),
         ListFilesTool(),
         ReadFileTool(),
+        DoCommand(),
         GetModelList(),
         AgentTool(),
     ]
