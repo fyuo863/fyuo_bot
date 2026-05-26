@@ -25,11 +25,12 @@ services:
     restart: unless-stopped
 
   mini_embed:
-    build: ./mini_embed  # 指向您刚刚创建的文件夹
+    build: ./mini_embed
     container_name: agent_mini_embed
     ports:
-      - "11434:11434"
+      - "11435:11435"
     volumes:
-      # 持久化 FastEmbed 的模型缓存，避免重启重新下载
       - ./model_cache:/root/.cache/fastembed
+      # 新增这一行：将本地的 main.py 直接映射到容器内的 /app/main.py
+      - ./mini_embed/main.py:/app/main.py
     restart: unless-stopped

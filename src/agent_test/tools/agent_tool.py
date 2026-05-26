@@ -83,7 +83,9 @@ class AgentTool(BaseTool):
         print(f"User:  {prompt}")
         print("=" * 50)
         agent = ReActAgent(tools=child_tools, system=system, model=effective_model, workspace=self.workspace)
-        return self._run_loop(agent, prompt, is_resume=False)
+        result = self._run_loop(agent, prompt, is_resume=False)
+        self._save_task_memory(prompt, result)
+        return result
 
     def chat(self, system: str, prompt: str, model: str = "") -> str:
         """多轮对话模式：带记忆检索和持久化。"""
@@ -112,13 +114,50 @@ class AgentTool(BaseTool):
 
         final_text = self._run_loop_direct(gen)
 
-        # ---- 记忆持久化 ----
-        if self.memory_engine and final_text:
-            import time
-            sid = self.session_id or str(int(time.time()))
-            self.memory_engine.save_memory(sid, prompt, final_text)
+        # ---- 记忆持久化（自动总结后存入） ----
+        if final_text:
+            self._save_task_memory(prompt, final_text)
 
         return final_text
+
+    def _summarize_task(self, user_input: str, agent_response: str) -> str:
+        """调用 LLM 将本次任务总结为一句话。"""
+        from openai import OpenAI
+        from config.config import api_key, base_url, model_name
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "你是一个任务总结器。将用户的任务和agent的完成情况用一句简洁的话总结"
+                            "（不超过50字），只返回总结本身，不要加任何前缀或引号。"
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": f"用户任务：{user_input}\nAgent完成情况：{agent_response[:2000]}",
+                    },
+                ],
+                temperature=0.3,
+                stream=False,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"[记忆] 总结任务失败: {e}")
+            return agent_response[:200]
+
+    def _save_task_memory(self, user_input: str, agent_response: str):
+        """总结任务并存入记忆。"""
+        if not self.memory_engine:
+            return
+        import time
+        summary = self._summarize_task(user_input, agent_response)
+        if summary:
+            sid = self.session_id or str(int(time.time()))
+            self.memory_engine.save_memory(sid, user_input, summary)
 
     def _build_child_tools(self, child_depth: int) -> list[BaseTool]:
         child_tools: list[BaseTool] = []

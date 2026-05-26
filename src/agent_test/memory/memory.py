@@ -26,7 +26,7 @@ class MemoryEngine:
             print(" 使用默认本地 ChromaDB: ./AgentMemory")
 
         self.embedding_func = embedding_functions.OllamaEmbeddingFunction(
-            url="http://127.0.0.1:11434",
+            url="http://127.0.0.1:11435",
             model_name="nomic-embed-text",
         )
         print(" embedding 函数已连接 Ollama (nomic-embed-text)")
@@ -37,15 +37,15 @@ class MemoryEngine:
         )
 
     def save_memory(self, session_id: str, user_input: str, agent_response: str):
-        memory_text = f"User asked: {user_input}\nAgent resolved: {agent_response}"
+        memory_text = f"任务: {user_input}\n总结: {agent_response}"
         self.collection.add(
             documents=[memory_text],
-            metadatas=[{"type": "conversation", "user_query": user_input}],
+            metadatas=[{"type": "task_summary", "user_query": user_input}],
             ids=[session_id],
         )
-        print("[记忆引擎] 本次任务经验已成功存入本地大脑。")
+        print("[记忆引擎] 本次任务总结已成功存入本地大脑。")
 
-    def retrieve_memory(self, current_input: str, top_k: int = 2) -> str:
+    def retrieve_memory(self, current_input: str, top_k: int = 5) -> str:
         if self.collection.count() == 0:
             return ""
         results = self.collection.query(

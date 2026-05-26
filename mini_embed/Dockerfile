@@ -9,6 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua
 COPY main.py .
 
 # 暴露与您之前 Ollama 相同的端口
-EXPOSE 11434
+EXPOSE 11435
 
 CMD ["python", "main.py"]
