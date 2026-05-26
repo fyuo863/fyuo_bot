@@ -3,7 +3,6 @@ import uuid
 
 from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFilesTool, ReadFileTool, DoCommand
 from tools.agent_tool import AgentTool, GetModelList
-from memory.memory import MemoryEngine
 
 WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -16,7 +15,6 @@ SYSTEM_PROMPT = (
 
 def main():
     # 初始化记忆引擎（连接 Docker ChromaDB）
-    memory = MemoryEngine(host="127.0.0.1", port=8000)
 
     sub_tools = [
         GetWeatherTool(),
@@ -33,7 +31,7 @@ def main():
         sub_tools=sub_tools,
         model_label="fyuo-bot",
         max_depth=3,
-        memory_engine=memory,
+        # memory_engine=memory,
         session_id=str(uuid.uuid4())[:8],  # 每次启动一个唯一 session
     )
     agent_tool.workspace = WORKSPACE
