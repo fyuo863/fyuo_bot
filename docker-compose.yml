@@ -1,0 +1,35 @@
+
+
+# 不要run all
+services:
+  # 1. ChromaDB 向量数据库服务
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: agent_chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      # 将容器内的数据库持久化到宿主机的 ./chroma_data 文件夹 [cite: 45]
+      - ./chroma_data:/chroma/chroma
+    restart: unless-stopped
+
+  # 2. Ollama Embedding 模型服务
+  ollama:
+    image: ollama/ollama:latest
+    container_name: agent_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      # 将下载的模型权重持久化，防止容器重启后重新下载
+      - ./ollama_data:/root/.ollama
+    restart: unless-stopped
+
+  mini_embed:
+    build: ./mini_embed  # 指向您刚刚创建的文件夹
+    container_name: agent_mini_embed
+    ports:
+      - "11434:11434"
+    volumes:
+      # 持久化 FastEmbed 的模型缓存，避免重启重新下载
+      - ./model_cache:/root/.cache/fastembed
+    restart: unless-stopped

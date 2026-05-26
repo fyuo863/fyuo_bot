@@ -3,3 +3,4 @@
 *.pyc
 /test
 /AgentMemory
+/ollama_data

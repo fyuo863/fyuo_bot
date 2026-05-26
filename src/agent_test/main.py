@@ -15,8 +15,8 @@ SYSTEM_PROMPT = (
 
 
 def main():
-    # 初始化记忆引擎（ChromaDB 本地持久化）
-    memory = MemoryEngine(db_path=os.path.join(WORKSPACE, "AgentMemory"))
+    # 初始化记忆引擎（连接 Docker ChromaDB）
+    memory = MemoryEngine(host="127.0.0.1", port=8000)
 
     sub_tools = [
         GetWeatherTool(),
