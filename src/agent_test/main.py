@@ -1,49 +1,30 @@
-from core.chat import TextChunk, ReasoningChunk, ToolCall
-from core.agent import ReActAgent, ToolResult, AgentComplete
-from tools.base import GetWeatherTool, GetLocationTool
-from config.config import api_key, base_url, model_name
-
-BOLD = "\033[1m"
-DIM = "\033[2m"
-GREEN = "\033[32m"
-RESET = "\033[0m"
+from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer
+from tools.agent_tool import AgentTool
 
 
 def main():
-    agent = ReActAgent(
-        tools=[GetWeatherTool(), GetLocationTool()],
-        system="你是一个生活助手，可以调用工具获取信息。",
+    # 1. 准备子工具
+    sub_tools = [
+        GetWeatherTool(),
+        GetLocationTool(),
+        LetUserAnswer(),
+    ]
+
+    # 2. 将 Agent 流程封装为工具（max_depth 内部控制，模型不可见）
+    agent_tool = AgentTool(
+        sub_tools=sub_tools,
+        model_label="DeepSeek",
+        max_depth=3,
     )
 
-    input_text = "我这里今天天气怎么样？"
-    print("=" * 50)
-    print(f"User:  {input_text}")
-    print("=" * 50)
+    # 3. 手动调用触发 agent
+    result = agent_tool.execute(
+        system="你是一个生活助手，可以调用工具获取信息。",
+        prompt="我这里今天天气怎么样？",
+    )
 
-    reasoning_printed = False
-    for event in agent.run(input_text):
-        if isinstance(event, ReasoningChunk):
-            if not reasoning_printed:
-                print(f"\n{DIM}[思考过程]", end="", flush=True)
-                reasoning_printed = True
-            print(event.content, end="", flush=True)
-
-        elif isinstance(event, TextChunk):
-            if reasoning_printed:
-                print(f"{RESET}\n{model_name}:    {BOLD}", end="", flush=True)
-                reasoning_printed = False
-            print(event.content, end="", flush=True)
-
-        elif isinstance(event, ToolCall):
-            print(f"\n{GREEN}[调用工具] {event.name}{RESET}")
-
-        elif isinstance(event, ToolResult):
-            print(f"{GREEN}[工具返回] {event.name}: {event.result}{RESET}")
-
-        elif isinstance(event, AgentComplete):
-            print(RESET)
-            print("-" * 50)
-            print("任务圆满完成！")
+    if result:
+        print(f"\n最终结果: {result}")
 
 
 if __name__ == "__main__":
