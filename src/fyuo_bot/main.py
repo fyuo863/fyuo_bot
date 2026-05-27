@@ -5,6 +5,7 @@ from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFiles
 from tools.agent_tool import AgentTool, GetModelList
 from tools.memory_tools import ReplaceMemoryTool, GetHistoryTool
 from memory import MemoryManager, HistoryManager
+from mcp_manager import MCPManager
 
 WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -39,6 +40,9 @@ SYSTEM_PROMPT = (
 
 
 def main():
+    # ---- 连接 MCP 服务（从 .fyuobot/.setting 读取） ----
+    mcp_manager = MCPManager(WORKSPACE)
+
     # 创建记忆/历史工具并注入管理器
     replace_memory_tool = ReplaceMemoryTool()
     replace_memory_tool.memory_manager = memory_manager
@@ -58,7 +62,7 @@ def main():
         replace_memory_tool,
         get_history_tool,
         AgentTool(),
-    ]
+    ] + mcp_manager.tools
 
     agent_tool = AgentTool(
         sub_tools=sub_tools,
@@ -77,6 +81,7 @@ def main():
         if not user_input:
             continue
         if user_input.lower() in ("exit", "quit", "q"):
+            mcp_manager.close_all()
             print("已退出")
             break
 

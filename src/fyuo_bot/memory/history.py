@@ -69,10 +69,11 @@ class HistoryManager:
         "或者纯闲聊，则标记为 SKIP。有实质信息（知识、决策、代码、问题解决、"
         "用户偏好、项目信息等）的对话才值得保存。\n\n"
         "2. **话题分类**：用 2-5 个字的简短标签对话题分类，例如：\n"
-        "   \"Python编程\"、\"代码审查\"、\"Bug修复\"、\"配置管理\"、\n"
-        "   \"项目规划\"、\"技术选型\"、\"调试日志\"、\"记忆管理\"\n\n"
+        "   Python编程、代码审查、Bug修复、配置管理、\n"
+        "   项目规划、技术选型、调试日志、记忆管理\n\n"
         "3. **浓缩对话**：用 1-3 句中文精炼这段对话的核心信息。\n"
-        "   保留关键细节（文件名、函数名、具体数据、决策理由），删除废话。\n\n"
+        "   保留关键细节（文件名、函数名、具体数据、决策理由），删除废话。\n"
+        "   **重要：summary 中所有双引号必须用中文引号「」替代，严禁出现英文双引号\"。**\n\n"
         "请严格按照以下 JSON 格式返回，不要加任何其他文字：\n"
         "{{\"action\": \"SKIP\"}}  或  {{\"action\": \"SAVE\", \"topic\": \"话题标签\", \"summary\": \"浓缩摘要\"}}\n\n"
         "=== 对话内容 ===\n"
@@ -109,9 +110,40 @@ class HistoryManager:
             if data.get("action") == "SAVE" and data.get("summary"):
                 return {"topic": data.get("topic", ""), "summary": data["summary"]}
             return None
-        except (json.JSONDecodeError, Exception) as e:
+        except json.JSONDecodeError:
+            # JSON 解析失败，尝试正则兜底（summary 中可能有未转义的引号）
+            return self._parse_fallback(text)
+        except Exception as e:
             print(f"[历史] 浓缩失败: {e}")
             return None
+
+    def _parse_fallback(self, text: str) -> dict | None:
+        """正则兜底：当 JSON 解析失败时，直接从文本中提取字段。"""
+        import re
+        action_match = re.search(r'"action"\s*:\s*"(SKIP|SAVE)"', text)
+        if not action_match or action_match.group(1) != "SAVE":
+            return None
+
+        topic = ""
+        topic_match = re.search(r'"topic"\s*:\s*"([^"]*)"', text)
+        if topic_match:
+            topic = topic_match.group(1)
+
+        # summary 可能包含未转义引号，取 "summary": " 之后到末尾 "} 之前
+        summary = ""
+        summary_start = re.search(r'"summary"\s*:\s*"', text)
+        if summary_start:
+            rest = text[summary_start.end():]
+            # 从后往前找最后一个 "}（JSON 对象的闭合），避免 summary 内含 "} 时截错
+            last_close = rest.rstrip().rfind('"}')
+            if last_close >= 0:
+                summary = rest[:last_close]
+            else:
+                summary = rest.strip().rstrip('"').rstrip("}").strip('"').strip()
+
+        if summary:
+            return {"topic": topic, "summary": summary}
+        return None
 
     # ---------------- 保存 ----------------
 
