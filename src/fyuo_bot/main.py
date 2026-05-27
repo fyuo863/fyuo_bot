@@ -80,7 +80,7 @@ def main():
             print("已退出")
             break
 
-        result = agent_tool.chat(system=SYSTEM_PROMPT, prompt=user_input)
+        result = agent_tool.chat(system=SYSTEM_PROMPT, prompt=user_input, model="deepseek-v4-flash")
         if result:
             history_manager.save_turn(agent_tool.session_id, user_input, result)
 
