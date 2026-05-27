@@ -126,3 +126,30 @@ class AgentChat:
                         name=tc.function.name,
                         arguments=tc.function.arguments,
                     )
+
+    @staticmethod
+    def summarize_context(messages: list[dict], model: str | None = None) -> str:
+        """将历史消息浓缩为一段摘要，用于上下文压缩。"""
+        import json
+        text = json.dumps(messages, ensure_ascii=False, indent=2)
+        if len(text) > 30000:
+            text = text[:15000] + "\n...(truncated)...\n" + text[-15000:]
+
+        prompt = (
+            "你是一个上下文压缩器。请将以下对话历史浓缩为一段精炼的摘要，"
+            "保留所有关键信息：任务目标、已完成的步骤、重要发现、"
+            "文件路径、代码模式、用户偏好、待解决的问题。\n\n"
+            f"=== 对话历史 ===\n{text}\n=== 结束 ===\n\n"
+            "请输出一段连续的摘要，不超过 1000 字。"
+        )
+        try:
+            client = OpenAI(api_key=api_key, base_url=base_url)
+            response = client.chat.completions.create(
+                model=model or model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                stream=False,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception:
+            return ""
