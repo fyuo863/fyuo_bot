@@ -2,6 +2,26 @@ from dataclasses import dataclass
 from openai import OpenAI
 from config.config import api_key, base_url, model_name
 
+import tiktoken
+
+# DeepSeek 系列模型使用类似 cl100k_base 的 BPE 分词器
+_tokenizer = tiktoken.get_encoding("cl100k_base")
+
+
+def count_tokens(messages: list[dict]) -> int:
+    """估算消息列表的 token 数。"""
+    total = 0
+    for msg in messages:
+        total += len(_tokenizer.encode(msg.get("content", "")))
+        total += len(_tokenizer.encode(msg.get("role", "")))
+        # tool_calls 的粗略估算
+        for tc in msg.get("tool_calls", []):
+            total += len(_tokenizer.encode(str(tc)))
+        # reasoning_content 也计入
+        if msg.get("reasoning_content"):
+            total += len(_tokenizer.encode(msg["reasoning_content"]))
+    return total
+
 
 @dataclass
 class TextChunk:

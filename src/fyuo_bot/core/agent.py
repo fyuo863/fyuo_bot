@@ -1,9 +1,12 @@
 import json
 from dataclasses import dataclass
 
-from .chat import AgentChat, TextChunk, ReasoningChunk, ToolCall
+from .chat import AgentChat, TextChunk, ReasoningChunk, ToolCall, count_tokens
 from .usage import Usage
 from tools.base import BaseTool
+
+DIM = "\033[2m"
+RESET = "\033[0m"
 
 
 @dataclass
@@ -69,7 +72,10 @@ class ReActAgent:
         reflections = 0
         pending_answer = ""
 
-        for _ in range(max_iterations):
+        for i in range(max_iterations):
+            token_n = count_tokens(self.messages)
+            print(f"\n{DIM}[轮次 {i+1}] 上下文: {token_n} tokens{RESET}")
+
             stream_items: list = []
             for item in AgentChat.chat(
                 messages=self.messages,
