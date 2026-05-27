@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFilesTool, ReadFileTool, DoCommand
+from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFilesTool, ReadFileTool, DoCommand, NewFileTool, WriteFileTool
 from tools.agent_tool import AgentTool, GetModelList
 from tools.memory_tools import ReplaceMemoryTool, GetHistoryTool
 from memory import MemoryManager, HistoryManager
@@ -24,6 +24,10 @@ SYSTEM_PROMPT = (
     "记录高信息密度的精简短句。当添加记忆超出容量时，先查看现有内容，"
     "合并相似条目、精简废话后再重试。\n"
     "\n"
+    "【多轮自评机制】每次回答后系统会自动要求你自我评价。"
+    "请在自评时审视：回答是否完整？是否有事实错误？是否可以进一步优化？"
+    "如果发现问题，主动调用工具修正；确认无误后回复'确认完成'以结束任务。\n"
+    "\n"
     "=== 以下是从上次会话继承的持久记忆（本次会话固定不变） ===\n"
     + (memory_snapshot if memory_snapshot else "暂无历史记忆。")
 )
@@ -40,6 +44,8 @@ def main():
         GetWeatherTool(),
         GetLocationTool(),
         LetUserAnswer(),
+        NewFileTool(),
+        WriteFileTool(),
         ListFilesTool(),
         ReadFileTool(),
         DoCommand(),
@@ -53,6 +59,8 @@ def main():
         sub_tools=sub_tools,
         model_label="fyuo-bot",
         max_depth=3,
+        auto_reflect=True,
+        max_reflections=3,
         session_id=str(uuid.uuid4())[:8],
     )
     agent_tool.workspace = WORKSPACE

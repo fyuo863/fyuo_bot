@@ -186,6 +186,96 @@ class MCPToolAdapter(BaseTool):
         result = await self.mcp_client.call_tool(self.name, arguments=kwargs)
         return result.content
 
+class NewFileTool(BaseTool):
+    name = "new_file"
+    description = (
+        "在工作区内创建新文件或文件夹。创建完成后自动检查是否成功。"
+        "如果是文件，会创建空文件；如果是文件夹，会递归创建所有父目录。"
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "相对于工作区的路径，例如 'src/utils/helper.py' 或 'data/output/'",
+            },
+            "type": {
+                "type": "string",
+                "enum": ["file", "folder"],
+                "description": "创建类型：file（文件）或 folder（文件夹）",
+            },
+        },
+        "required": ["path", "type"],
+    }
+
+    def execute(self, path: str = "", type: str = "file", **kwargs) -> str:
+        try:
+            abs_path = self.resolve_path(path)
+        except (ValueError, RuntimeError) as e:
+            return str(e)
+
+        try:
+            if type == "folder":
+                os.makedirs(abs_path, exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+                with open(abs_path, "w", encoding="utf-8") as f:
+                    pass
+
+            # 自检：确认创建成功
+            exists = os.path.isdir(abs_path) if type == "folder" else os.path.isfile(abs_path)
+            if exists:
+                kind = "文件夹" if type == "folder" else "文件"
+                return f"创建{kind}成功: {path}"
+            return f"创建失败：无法验证 {path} 是否存在"
+        except Exception as e:
+            return f"创建失败: {str(e)}"
+
+
+class WriteFileTool(BaseTool):
+    name = "write_file"
+    description = (
+        "将内容写入工作区内的指定文件。使用 Python 原生文件流写入，"
+        "如果文件不存在会自动创建，如果已存在则覆盖。"
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "file_path": {
+                "type": "string",
+                "description": "相对于工作区的文件路径，例如 'src/main.py'",
+            },
+            "content": {
+                "type": "string",
+                "description": "要写入文件的完整文本内容",
+            },
+        },
+        "required": ["file_path", "content"],
+    }
+
+    def execute(self, file_path: str = "", content: str = "", **kwargs) -> str:
+        try:
+            abs_path = self.resolve_path(file_path)
+        except (ValueError, RuntimeError) as e:
+            return str(e)
+
+        try:
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            with open(abs_path, "w", encoding="utf-8") as f:
+                f.write(content)
+
+            # 自检：读回确认写入
+            with open(abs_path, "r", encoding="utf-8") as f:
+                written = f.read()
+            if written == content:
+                lines = content.count("\n") + 1
+                size = len(content)
+                return f"写入完成: {file_path}（{lines} 行，{size} 字符）"
+            return f"写入异常：内容校验不匹配（写入 {len(content)} 字符，读回 {len(written)} 字符）"
+        except Exception as e:
+            return f"写入失败: {str(e)}"
+
+
 class DoCommand(BaseTool):
     name = "do_command"
     description = (

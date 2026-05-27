@@ -30,6 +30,8 @@ class AgentTool(BaseTool):
     sub_tools: list[BaseTool] = field(default_factory=list)
     model_label: str = "AI"
     max_depth: int = 3
+    auto_reflect: bool = False
+    max_reflections: int = 3
     memory_engine: object = None   # MemoryEngine 实例，可选
     session_id: str = ""   # 记忆的 session 标识
 
@@ -73,7 +75,7 @@ class AgentTool(BaseTool):
         child_tools: list[BaseTool] = []
         for t in self.sub_tools:
             if isinstance(t, AgentTool):
-                child_tools.append(AgentTool(sub_tools=t.sub_tools, model_label=t.model_label, max_depth=child_depth))
+                child_tools.append(AgentTool(sub_tools=t.sub_tools, model_label=t.model_label, max_depth=child_depth, auto_reflect=self.auto_reflect, max_reflections=self.max_reflections))
             else:
                 child_tools.append(t)
         if child_depth <= 0:
@@ -82,7 +84,7 @@ class AgentTool(BaseTool):
         print("=" * 50)
         print(f"User:  {prompt}")
         print("=" * 50)
-        agent = ReActAgent(tools=child_tools, system=system, model=effective_model, workspace=self.workspace)
+        agent = ReActAgent(tools=child_tools, system=system, model=effective_model, workspace=self.workspace, auto_reflect=self.auto_reflect, max_reflections=self.max_reflections)
         result = self._run_loop(agent, prompt, is_resume=False)
         self._save_task_memory(prompt, result)
         return result
@@ -107,7 +109,7 @@ class AgentTool(BaseTool):
             active_system = enriched_system
             if child_depth <= 0:
                 active_system = ("【深度警告】你已到达最大嵌套深度，必须直接完成任务。" + enriched_system)
-            self._agent = ReActAgent(tools=child_tools, system=active_system, model=effective_model, workspace=self.workspace)
+            self._agent = ReActAgent(tools=child_tools, system=active_system, model=effective_model, workspace=self.workspace, auto_reflect=self.auto_reflect, max_reflections=self.max_reflections)
             gen = self._agent.run(prompt)
         else:
             gen = self._agent.continue_conversation(prompt)
@@ -163,7 +165,7 @@ class AgentTool(BaseTool):
         child_tools: list[BaseTool] = []
         for t in self.sub_tools:
             if isinstance(t, AgentTool):
-                child_tools.append(AgentTool(sub_tools=t.sub_tools, model_label=t.model_label, max_depth=child_depth))
+                child_tools.append(AgentTool(sub_tools=t.sub_tools, model_label=t.model_label, max_depth=child_depth, auto_reflect=self.auto_reflect, max_reflections=self.max_reflections))
             else:
                 child_tools.append(t)
         return child_tools
@@ -200,6 +202,8 @@ class AgentTool(BaseTool):
                 print("-" * 50)
                 return self._run_loop_direct(self._agent.resume())
             elif isinstance(event, AgentComplete):
+                if event.final_text:
+                    final_text = event.final_text
                 print(RESET)
                 print("-" * 50)
                 print("任务圆满完成！")

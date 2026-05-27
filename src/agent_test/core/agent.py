@@ -20,7 +20,7 @@ class UserInputRequired:
 
 @dataclass
 class AgentComplete:
-    pass
+    final_text: str = ""
 
 
 class ReActAgent:
@@ -31,6 +31,8 @@ class ReActAgent:
         system: str = "",
         model: str | None = None,
         workspace: str = "",
+        auto_reflect: bool = False,
+        max_reflections: int = 3,
     ):
         self.tool_registry: dict[str, BaseTool] = {t.name: t for t in tools}
         for t in self.tool_registry.values():
@@ -38,6 +40,8 @@ class ReActAgent:
         self.system = system
         self.model = model
         self.messages: list[dict] = []
+        self.auto_reflect = auto_reflect
+        self.max_reflections = max_reflections
 
     def _tool_schemas(self) -> list[dict]:
         return [t.to_openai_schema() for t in self.tool_registry.values()]
@@ -53,7 +57,18 @@ class ReActAgent:
         self.messages.append({"role": "user", "content": user_input})
         return self._react_loop(max_iterations)
 
+    SELF_REFLECT_PROMPT = (
+        "【自动自评】请审视你刚才的回答是否完整、准确。"
+        "如果发现错误或遗漏，请调用工具修正或补充；"
+        "如果确认回答已完美完成，请直接回复'确认完成'。"
+    )
+
+    DONE_MARKERS = ("确认完成", "无需改进", "任务完成", "已完成")
+
     def _react_loop(self, max_iterations: int):
+        reflections = 0
+        pending_answer = ""
+
         for _ in range(max_iterations):
             stream_items: list = []
             for item in AgentChat.chat(
@@ -68,8 +83,28 @@ class ReActAgent:
             self.messages.append(assistant_msg)
 
             if "tool_calls" not in assistant_msg:
-                yield AgentComplete()
+                content = assistant_msg.get("content", "")
+
+                if self.auto_reflect and reflections < self.max_reflections:
+                    if self._is_done_marker(content):
+                        final = pending_answer or content
+                        yield AgentComplete(final_text=final)
+                        return
+
+                    reflections += 1
+                    pending_answer = content
+                    self.messages.append({
+                        "role": "user",
+                        "content": self.SELF_REFLECT_PROMPT,
+                    })
+                    continue
+
+                final = pending_answer or content
+                yield AgentComplete(final_text=final)
                 return
+
+            # 自评后 agent 选择调用工具改进 → 清除暂存答案
+            pending_answer = ""
 
             for tc in assistant_msg["tool_calls"]:
                 func_name = tc["function"]["name"]
@@ -96,6 +131,13 @@ class ReActAgent:
                     })
 
         yield AgentComplete()
+
+    def _is_done_marker(self, text: str) -> bool:
+        """检测文本是否仅为完成确认信号（不含实质内容）。"""
+        stripped = text.strip()
+        if len(stripped) > 30:
+            return False
+        return any(marker in stripped for marker in self.DONE_MARKERS)
 
     def feed_user_response(self, user_response: str, call_id: str):
         self.messages.append({
