@@ -15,8 +15,10 @@ class ReplaceMemoryTool(BaseTool):
 
     name: str = "replace_memory"
     description: str = (
-        "修改持久记忆。记忆分为 MEMORY（项目规范、工作习惯、经验教训）"
-        "和 USER（用户身份、偏好、技术水平）。\n"
+        "修改持久记忆。记忆严格分为两类：\n"
+        "  - MEMORY：用户的【操作习惯】，如编码风格偏好、工作流习惯等\n"
+        "  - USER：用户的【个人信息】，如饮食偏好、职业、使用系统等\n"
+        "严禁存入：任务执行记录、代码细节、文件路径、项目事实。\n"
         "三种模式：\n"
         "  - 新增：old_text 留空，new_text 填要添加的内容\n"
         "  - 替换：old_text 填原记忆中的唯一子串，new_text 填替换内容\n"
