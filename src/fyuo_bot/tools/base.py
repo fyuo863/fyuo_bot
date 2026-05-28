@@ -51,43 +51,6 @@ class BaseTool(ABC):
 # 内置工具
 # ============================================================
 
-class GetWeatherTool(BaseTool):
-    name = "get_weather"
-    description = "获取指定城市的当前天气"
-    parameters = {
-        "type": "object",
-        "properties": {
-            "city": {"type": "string", "description": "城市名称，例如 Beijing"},
-        },
-        "required": ["city"],
-    }
-
-    def execute(self, city: str = "", **kwargs) -> str:
-        return f"{city} 当前天气：晴，25°C，湿度 60%"
-
-
-class GetLocationTool(BaseTool):
-    name = "get_location"
-    description = "获取用户当前所在的城市名称"
-    parameters = {
-        "type": "object",
-        "properties": {
-            "query": {"type": "string", "description": "固定传 'self'"},
-        },
-        "required": [],
-    }
-
-    def execute(self, **kwargs) -> str:
-        try:
-            response = requests.get("http://ip-api.com/json/", timeout=5)
-            data = response.json()
-            if data["status"] == "success":
-                return data["city"]
-            return "未知城市"
-        except Exception as e:
-            return f"定位失败: {str(e)}"
-
-
 class ReadFileTool(BaseTool):
     name = "read_file"
     description = "读取工作区内指定路径的文件内容"

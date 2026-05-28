@@ -11,10 +11,31 @@ import json
 import os
 import threading
 
+import httpx
 from mcp.client.stdio import stdio_client, StdioServerParameters
+from mcp.client.sse import sse_client
 from mcp import ClientSession
 
 from tools.base import BaseTool
+
+
+def _no_proxy_http_client(headers=None, timeout=None, auth=None):
+    """创建不走系统代理的 httpx.AsyncClient，用于访问本地 Docker 等服务。
+
+    Windows 上 httpx.AsyncClient(proxy=None) 不能可靠地绕过系统代理，
+    必须通过 AsyncHTTPTransport 显式传递 proxy=None。
+    """
+    transport = httpx.AsyncHTTPTransport(proxy=None)
+    kwargs = {"follow_redirects": True, "transport": transport}
+    if timeout is None:
+        kwargs["timeout"] = httpx.Timeout(30, read=300)
+    else:
+        kwargs["timeout"] = timeout
+    if headers is not None:
+        kwargs["headers"] = headers
+    if auth is not None:
+        kwargs["auth"] = auth
+    return httpx.AsyncClient(**kwargs)
 
 
 class MCPTool(BaseTool):
@@ -32,13 +53,11 @@ class MCPTool(BaseTool):
 
 
 class MCPServerClient:
-    """单个 MCP 服务的后台线程客户端。"""
+    """单个 MCP 服务的后台线程客户端。支持 stdio 和 sse 两种传输方式。"""
 
-    def __init__(self, name: str, command: str, args: list[str],
-                 timeout: float = 15.0):
+    def __init__(self, name: str, cfg: dict, timeout: float = 15.0):
         self.name = name
-        self._command = command
-        self._args = args
+        self._cfg = cfg
         self._timeout = timeout
         self._loop: asyncio.AbstractEventLoop | None = None
         self._session: ClientSession | None = None
@@ -80,12 +99,22 @@ class MCPServerClient:
             pass
 
     async def _connect(self):
-        params = StdioServerParameters(
-            command=self._command,
-            args=self._args,
-        )
-        self._transport_ctx = stdio_client(params)
-        read, write = await self._transport_ctx.__aenter__()
+        transport = self._cfg.get("transport", "stdio")
+
+        if transport == "sse":
+            url = self._cfg["url"]
+            self._transport_ctx = sse_client(
+                url, httpx_client_factory=_no_proxy_http_client,
+            )
+            read, write = await self._transport_ctx.__aenter__()
+        else:
+            params = StdioServerParameters(
+                command=self._cfg["command"],
+                args=self._cfg.get("args", []),
+            )
+            self._transport_ctx = stdio_client(params)
+            read, write = await self._transport_ctx.__aenter__()
+
         self._session_ctx = ClientSession(read, write)
         self._session = await self._session_ctx.__aenter__()
         await self._session.initialize()
@@ -166,12 +195,19 @@ class MCPManager:
             if not cfg.get("enabled", True):
                 continue
             name = cfg["name"]
-            command = cfg["command"]
-            args = cfg.get("args", [])
+            transport = cfg.get("transport", "stdio")
             prefix = name.replace("-", "_")
 
+            # 校验必要字段
+            if transport == "sse" and "url" not in cfg:
+                print(f"  [MCP] {name}: 配置错误 — SSE 传输需要 'url' 字段")
+                continue
+            if transport != "sse" and "command" not in cfg:
+                print(f"  [MCP] {name}: 配置错误 — stdio 传输需要 'command' 字段")
+                continue
+
             try:
-                client = MCPServerClient(name, command, args, timeout=self._timeout)
+                client = MCPServerClient(name, cfg, timeout=self._timeout)
             except Exception as e:
                 print(f"  [MCP] {name}: 连接失败 — {e}")
                 continue

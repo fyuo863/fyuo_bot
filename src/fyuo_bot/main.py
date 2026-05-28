@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from tools.base import GetWeatherTool, GetLocationTool, LetUserAnswer, ListFilesTool, ReadFileTool, DoCommand, NewFileTool, WriteFileTool
+from tools.base import LetUserAnswer, ListFilesTool, ReadFileTool, DoCommand, NewFileTool, WriteFileTool
 from tools.agent_tool import AgentTool, GetModelList
 from tools.memory_tools import ReplaceMemoryTool, GetHistoryTool
 from memory import MemoryManager, HistoryManager
@@ -50,8 +50,6 @@ def main():
     get_history_tool.history_manager = history_manager
 
     sub_tools = [
-        GetWeatherTool(),
-        GetLocationTool(),
         LetUserAnswer(),
         NewFileTool(),
         WriteFileTool(),
