@@ -1,13 +1,9 @@
-<p align="center">
-  <img src="assets/logo.svg" width="160" alt="fyuo_bot Logo"/>
-</p>
-
 <h1 align="center">fyuo_bot</h1>
 
 <p align="center">
   <b>基于 ReAct 循环的 AI Agent 框架</b> — 思考、行动、观察、自省，让 LLM 真正"用起来"
 </p>
-
+<p align="center">目前主力开发基于 TypeScript 的 <a href="https://github.com/fyuo863/fyuobot-ts" target="_blank" rel="noopener noreferrer">fyuobot-ts</a></p>
 <p align="center">此页面由fyuo_bot自行构建</p>
 
 <p align="center">
